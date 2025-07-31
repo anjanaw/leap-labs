@@ -4,7 +4,8 @@ Adversarial Noise for Leap Labs
 This repository is a python tool to generate targeted adversarial examples on images using Projected Gradient Descent with pretrained ConvNeXt model.
 
 ## Setup
-Create a virtual environment with dependancies listed on requirements.txt
+1. Clone this repository 
+2. Create a virtual environment with dependancies listed on requirements.txt
 
 ### Run on terminal
 ```
