@@ -26,4 +26,5 @@ Then open URL on browser, usually in the format of `http://127.0.0.1:7860`.
 
 - Only tested on ImageNet sample images. 
 - ImageNet normalisation is not applied. 
-- Quality of the adversarial sample may be poor due to resizing 
+- Quality of the adversarial sample may be poor due to resizing
+- There is an option to use gpu when running on terminal with `--device`, gradio app will select gpu if available.
