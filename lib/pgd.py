@@ -13,6 +13,8 @@ from torchvision.models import convnext_tiny, ConvNeXt_Tiny_Weights
 from torchvision import transforms
 from torchvision.transforms.functional import to_pil_image
 
+from .utils import apply_imagenet_norm
+
 class PGD:
     def __init__(self, device_str: Optional[str] = None):
         """
@@ -34,8 +36,8 @@ class PGD:
         self.alpha = 1/255
         self.max_steps = 40
 
-        # preprocessing transforms for ImageNet pretrained convNeXt-tiny: resize to 224x224 and convert to tensor
-        # skipping ImageNet normalisation - to add if testing on other images
+        # preprocessing transforms for ImageNet pretrained convNeXt-tiny: resize min h/w to 224 and convert to tensor
+        # skipping ImageNet normalisation - added only for inference
         self.transforms = transforms.Compose([
             transforms.Resize(224),
             transforms.ToTensor(),
@@ -73,7 +75,8 @@ class PGD:
 
         # If successful, save adversarial image in orginal size.
         if adverse_image:
-            output_file = os.path.join(output_path, os.path.basename(image_path))
+            org_name, org_extension = os.path.basename(image_path).split(".")
+            output_file = os.path.join(output_path, f"{org_name}_{target_class}.{org_extension}")
             adverse_image.save(output_file)
 
         return adverse_image is not None
@@ -97,7 +100,9 @@ class PGD:
 
         # Optional: get model prediction for the orginal image to further validate target class
         with torch.no_grad():
-            logits = self.model(source_image)
+            # apply normalisation before inference
+            source_image_norm = apply_imagenet_norm(source_image)
+            logits = self.model(source_image_norm)
             predicted_class = torch.argmax(logits).item()
 
         if predicted_class == target_class:
@@ -107,12 +112,20 @@ class PGD:
         # Clone the original image for adversarial modification
         adverse_image = source_image.clone().detach()
 
-        adverse_class = predicted_class
+        adverse_class = None
         step = 0
         # Perform iterative pgd updates with early stop
         while step < self.max_steps:
             adverse_image.requires_grad = True
-            adverse_logits = self.model(adverse_image)
+
+            # apply normalisation before inference
+            adverse_image_norm = apply_imagenet_norm(adverse_image)
+            adverse_logits = self.model(adverse_image_norm)
+            adverse_class = torch.argmax(adverse_logits).item()
+            
+            # check for early stop
+            if adverse_class == target_class:
+                break
 
             # Loss computation to maximize target class probability
             adverse_loss = -F.cross_entropy(adverse_logits, target_tensor)
@@ -123,13 +136,6 @@ class PGD:
             adverse_image = torch.max(torch.min(adverse_image, source_image + self.epsilon), source_image - self.epsilon)
             adverse_image = torch.clamp(adverse_image, 0, 1).detach()
             step += 1
-
-            # Check current prediction
-            with torch.no_grad():
-                adverse_logits = self.model(adverse_image)
-                adverse_class = torch.argmax(adverse_logits).item()
-            if adverse_class == target_class:
-                break
         
         # If successful, return adversarial image in PIL format in orginal size.
         if adverse_class == target_class:
