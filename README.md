@@ -26,6 +26,7 @@ Then open URL on browser, usually in the format of `http://127.0.0.1:7860`.
 
 - Quality of the adversarial sample may be poor due to resizing
 - There is an option to use gpu when running on terminal with `--device`, gradio app will select gpu if available.
+- pgd-test.ipynb contains some of the initial explorations, now cleaned up. 
 
 ### Updates
 - [01/08] Added ImageNet normalisation and tested on non-ImageNet samples
