@@ -30,3 +30,4 @@ Then open URL on browser, usually in the format of `http://127.0.0.1:7860`.
 
 ### Updates
 - [01/08] Added ImageNet normalisation and tested on non-ImageNet samples
+- [06/08] Update pgd to use gradient descent instead of ascent; add option to use l2 normalisation on perturbation
