@@ -16,7 +16,7 @@ from torchvision.transforms.functional import to_pil_image
 from .utils import apply_imagenet_norm
 
 class PGD:
-    def __init__(self, device_str: Optional[str] = None):
+    def __init__(self, use_l2: bool, device_str: Optional[str] = None):
         """
         Initialize
 
@@ -31,10 +31,17 @@ class PGD:
         self.model = self.model.eval()
         self.model = self.model.to(self.device)
 
-        # pgd parameters
-        self.epsilon = 4/255
-        self.alpha = 1/255
-        self.max_steps = 40
+        self.use_l2 = use_l2
+
+        if self.use_l2:
+            self.epsilon = 2.0
+            self.alpha = 0.02
+            self.max_steps = 100
+        else:
+            # pgd l_inf parameters
+            self.epsilon = 4/255
+            self.alpha = 1/255
+            self.max_steps = 40
 
         # preprocessing transforms for ImageNet pretrained convNeXt-tiny: resize min h/w to 224 and convert to tensor
         # skipping ImageNet normalisation - added only for inference
@@ -128,13 +135,26 @@ class PGD:
                 break
 
             # Loss computation to maximize target class probability
-            adverse_loss = -F.cross_entropy(adverse_logits, target_tensor)
+            adverse_loss = F.cross_entropy(adverse_logits, target_tensor)
             grad = torch.autograd.grad(adverse_loss, adverse_image, retain_graph=False, create_graph=False)[0]
 
-            # Update image with gradient sign, constrained by epsilon
-            adverse_image = adverse_image + self.alpha * grad.sign()
-            adverse_image = torch.max(torch.min(adverse_image, source_image + self.epsilon), source_image - self.epsilon)
-            adverse_image = torch.clamp(adverse_image, 0, 1).detach()
+            if self.use_l2:
+                # Update image with gradient normalised 
+                g_norm = grad.view(grad.shape[0], -1).norm(p=2, dim=1).view(-1, 1, 1, 1)
+                grad_norm = grad / (g_norm + 1e-8)
+                adverse_image = adverse_image - self.alpha * grad_norm
+
+                delta = adverse_image - source_image
+                d_norm = delta.view(delta.shape[0], -1).norm(p=2, dim=1).view(-1, 1, 1, 1)
+                delta = delta * (self.epsilon / (d_norm + 1e-8)).clamp(max=1.0)
+
+                adverse_image = source_image + delta
+                adverse_image = torch.clamp(adverse_image, 0, 1).detach()
+            else:
+                # Update image with gradient sign, constrained by epsilon
+                adverse_image = adverse_image - self.alpha * grad.sign()
+                adverse_image = torch.max(torch.min(adverse_image, source_image + self.epsilon), source_image - self.epsilon)
+                adverse_image = torch.clamp(adverse_image, 0, 1).detach()
             step += 1
         
         # If successful, return adversarial image in PIL format in orginal size.
